@@ -130,3 +130,4 @@ public static class SystemSoundsVolume {
 $volume = if ($args.Count -gt 0) { [float]$args[0] / 100 } else { 0.10 }
 $result = [SystemSoundsVolume]::SetVolume($volume)
 Write-Host $result
+Start-Sleep -Seconds 5
