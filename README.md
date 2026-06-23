@@ -20,7 +20,7 @@ No admin rights required.
 
 ## How it works
 
-The script enumerates all active audio sessions on the default output device using `IAudioSessionManager2`. The System Sounds session is identified by having **PID = 0** — it is not owned by any user process. Once found, `ISimpleAudioVolume::SetMasterVolume` is called to set the level.
+The script enumerates all active audio sessions on the default output device using `IAudioSessionManager2`. The System Sounds session is identified via `IAudioSessionControl2::IsSystemSoundsSession()` (its owning PID isn't reliably 0 across Windows builds/devices, so that can't be used as the check). Once found, `ISimpleAudioVolume::SetMasterVolume` is called to set the level.
 
 > **Note:** The System Sounds session only appears in the mixer after Windows has played at least one sound since boot. If the session isn't found, the script automatically plays a system sound and retries before giving up.
 

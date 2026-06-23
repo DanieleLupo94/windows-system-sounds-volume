@@ -128,11 +128,10 @@ public static class SystemSoundsVolume {
 
             var session2 = (IAudioSessionControl2) session;
 
-            uint pid;
-            session2.GetProcessId(out pid);
-
-            // System Sounds session always has PID=0 (not owned by any user process)
-            if (pid == 0) {
+            // IsSystemSoundsSession returns S_OK (0) when this is the genuine System Sounds
+            // session. Its owning PID isn't reliably 0 on all Windows builds/devices, so we
+            // can't use GetProcessId as the check.
+            if (session2.IsSystemSoundsSession() == 0) {
                 found = session;
                 return true;
             }
