@@ -1,3 +1,4 @@
+if (-not ([System.Management.Automation.PSTypeName]'SystemSoundsVolume').Type) {
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -80,22 +81,41 @@ interface IAudioSessionControl2 {
 interface ISimpleAudioVolume {
     int SetMasterVolume(float fLevel, ref Guid EventContext);
     int GetMasterVolume(out float pfLevel);
-    int SetMute(bool bMute, ref Guid EventContext);
-    int GetMute(out bool pbMute);
+    int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, ref Guid EventContext);
+    int GetMute([MarshalAs(UnmanagedType.Bool)] out bool pbMute);
+}
+
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+    int RegisterControlChangeNotify(IntPtr pNotify);
+    int UnregisterControlChangeNotify(IntPtr pNotify);
+    int GetChannelCount(out uint pnChannelCount);
+    int SetMasterVolumeLevel(float fLevelDB, ref Guid pguidEventContext);
+    int SetMasterVolumeLevelScalar(float fLevel, ref Guid pguidEventContext);
+    int GetMasterVolumeLevel(out float pfLevelDB);
+    int GetMasterVolumeLevelScalar(out float pfLevel);
+    int SetChannelVolumeLevel(uint nChannel, float fLevelDB, ref Guid pguidEventContext);
+    int SetChannelVolumeLevelScalar(uint nChannel, float fLevel, ref Guid pguidEventContext);
+    int GetChannelVolumeLevel(uint nChannel, out float pfLevelDB);
+    int GetChannelVolumeLevelScalar(uint nChannel, out float pfLevel);
+    int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, ref Guid pguidEventContext);
+    int GetMute([MarshalAs(UnmanagedType.Bool)] out bool pbMute);
+    int GetVolumeStepInfo(out uint pnStep, out uint pnStepCount);
+    int VolumeStepUp(ref Guid pguidEventContext);
+    int VolumeStepDown(ref Guid pguidEventContext);
+    int QueryHardwareSupport(out uint pdwHardwareSupportMask);
+    int GetVolumeRange(out float pflMin, out float pflMax, out float pflIncrement);
 }
 
 public static class SystemSoundsVolume {
-    public static string SetVolume(float level) {
-        var enumerator = (IMMDeviceEnumerator) new MMDeviceEnumeratorCOM();
+    [DllImport("winmm.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool PlaySound(string pszSound, IntPtr hmod, uint fdwSound);
 
-        IMMDevice device;
-        enumerator.GetDefaultAudioEndpoint(0, 1, out device);
+    const uint SND_ALIAS = 0x00010000;
+    const uint SND_SYNC = 0x0000;
+    const uint SND_NODEFAULT = 0x0002;
 
-        var sessionManagerGuid = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
-        object sessionManagerObj;
-        device.Activate(ref sessionManagerGuid, 23, IntPtr.Zero, out sessionManagerObj);
-        var sessionManager = (IAudioSessionManager2) sessionManagerObj;
-
+    static bool TryFindSystemSoundsSession(IAudioSessionManager2 sessionManager, out IAudioSessionControl found) {
         IAudioSessionEnumerator sessionEnum;
         sessionManager.GetSessionEnumerator(out sessionEnum);
 
@@ -113,19 +133,64 @@ public static class SystemSoundsVolume {
 
             // System Sounds session always has PID=0 (not owned by any user process)
             if (pid == 0) {
-                var volume = (ISimpleAudioVolume) session;
-                var emptyGuid = Guid.Empty;
-                volume.SetMasterVolume(level, ref emptyGuid);
-
-                float current;
-                volume.GetMasterVolume(out current);
-                return string.Format("System Sounds volume set to {0:P0}", current);
+                found = session;
+                return true;
             }
         }
+        found = null;
+        return false;
+    }
+
+    public static string SetVolume(float level) {
+        var enumerator = (IMMDeviceEnumerator) new MMDeviceEnumeratorCOM();
+
+        IMMDevice device;
+        enumerator.GetDefaultAudioEndpoint(0, 1, out device);
+
+        var sessionManagerGuid = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
+        object sessionManagerObj;
+        device.Activate(ref sessionManagerGuid, 23, IntPtr.Zero, out sessionManagerObj);
+        var sessionManager = (IAudioSessionManager2) sessionManagerObj;
+
+        // We always mute the output device, play a trigger sound to (re)create the System Sounds
+        // session, adjust its volume, then unmute — so the user never hears the trigger at full volume.
+        var endpointVolumeGuid = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
+        object endpointVolumeObj;
+        device.Activate(ref endpointVolumeGuid, 23, IntPtr.Zero, out endpointVolumeObj);
+        var endpointVolume = (IAudioEndpointVolume) endpointVolumeObj;
+        var emptyGuid2 = Guid.Empty;
+
+        IAudioSessionControl session;
+        bool found;
+
+        endpointVolume.SetMute(true, ref emptyGuid2);
+        try {
+            PlaySound("SystemAsterisk", IntPtr.Zero, SND_ALIAS | SND_SYNC | SND_NODEFAULT);
+            found = TryFindSystemSoundsSession(sessionManager, out session);
+
+            for (int attempt = 0; attempt < 10 && !found; attempt++) {
+                System.Threading.Thread.Sleep(150);
+                found = TryFindSystemSoundsSession(sessionManager, out session);
+            }
+        } finally {
+            endpointVolume.SetMute(false, ref emptyGuid2);
+        }
+
+        if (found) {
+            var volume = (ISimpleAudioVolume) session;
+            var emptyGuid = Guid.Empty;
+            volume.SetMasterVolume(level, ref emptyGuid);
+
+            float current;
+            volume.GetMasterVolume(out current);
+            return string.Format("System Sounds volume set to {0:P0}", current);
+        }
+
         return "WARNING: System Sounds session not found. Play any system sound and try again.";
     }
 }
 "@
+}
 
 $volume = if ($args.Count -gt 0) { [float]$args[0] / 100 } else { 0.10 }
 $result = [SystemSoundsVolume]::SetVolume($volume)
