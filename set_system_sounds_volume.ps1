@@ -194,5 +194,28 @@ public static class SystemSoundsVolume {
 
 $volume = if ($args.Count -gt 0) { [float]$args[0] / 100 } else { 0.10 }
 $result = [SystemSoundsVolume]::SetVolume($volume)
-Write-Host $result
-Start-Sleep -Seconds 5
+
+try {
+    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+    [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null
+
+    $toastXml = [xml] @"
+<toast>
+    <visual>
+        <binding template="ToastGeneric">
+            <text>System Sounds Volume</text>
+            <text>$result</text>
+        </binding>
+    </visual>
+</toast>
+"@
+
+    $xmlDoc = New-Object Windows.Data.Xml.Dom.XmlDocument
+    $xmlDoc.LoadXml($toastXml.OuterXml)
+    $toast = New-Object Windows.UI.Notifications.ToastNotification($xmlDoc)
+    $aumid = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid).Show($toast)
+} catch {
+    Write-Host $result
+    Start-Sleep -Seconds 5
+}

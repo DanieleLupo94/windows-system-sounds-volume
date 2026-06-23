@@ -38,7 +38,7 @@ The standalone `set_system_sounds_volume.exe` is built from the `.ps1` script us
 Install-Module -Name ps2exe -Scope CurrentUser
 
 # Build (uses icon.ico from the repo)
-Invoke-ps2exe -inputFile "set_system_sounds_volume.ps1" -outputFile "set_system_sounds_volume.exe" -iconFile "icon.ico" -noConsole:$false
+Invoke-ps2exe -inputFile "set_system_sounds_volume.ps1" -outputFile "set_system_sounds_volume.exe" -iconFile "icon.ico" -noConsole:$true
 ```
 
 Arguments are forwarded to the script's `$args`, so `set_system_sounds_volume.exe 20` works the same as the `.ps1` equivalent. Rebuild and commit the `.exe` whenever the `.ps1` changes.
